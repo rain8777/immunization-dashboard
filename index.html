@@ -6,16 +6,43 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; background:#f9fafb; }
     h1 { text-align: center; }
     .chart-container { width: 500px; margin: 30px auto; }
-    table { margin-top: 40px; }
+    table { margin-top: 20px; }
+    .filters { margin: 20px auto; text-align:center; }
+    .filters select { margin: 0 10px; padding: 5px; }
   </style>
 </head>
 <body>
   <h1>📊 Immunization Dashboard</h1>
+
+  <div class="filters">
+    <label>Municipality:
+      <select id="municipalityFilter">
+        <option value="">All</option>
+      </select>
+    </label>
+    <label>BCG:
+      <select id="bcgFilter">
+        <option value="">All</option>
+        <option value="complete">Complete</option>
+        <option value="hold">Hold</option>
+        <option value="pending">Pending</option>
+      </select>
+    </label>
+    <label>HepB:
+      <select id="hepbFilter">
+        <option value="">All</option>
+        <option value="complete">Complete</option>
+        <option value="hold">Hold</option>
+        <option value="pending">Pending</option>
+      </select>
+    </label>
+  </div>
 
   <div class="chart-container">
     <canvas id="genderChart"></canvas>
@@ -41,19 +68,16 @@
 
   <script>
     async function fetchSheetData() {
-      // Use CSV link (publish to web → CSV)
       const csvUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR8qr3RNfzQobIMSn-9LMvbf4gVL-HxT0yzqp6ced96IWzRucs0rEfduPJr7YIuv3gBs5073ZQBrzTl/pub?output=csv";
       const resp = await fetch(csvUrl);
       const text = await resp.text();
-      
-      // Split rows
-      const lines = text.trim().split("\n").map(l => l.split(","));
 
-      // Remove header row (A1:J1)
-      lines.shift();
+      // Parse CSV safely
+      const parsed = Papa.parse(text.trim(), { skipEmptyLines: true });
+      const rows = parsed.data;
 
-      // Only take rows A2:J41 (in case sheet has extra blank rows)
-      const filtered = lines.slice(0, 40); // 40 rows from A2 to A41
+      rows.shift(); // remove headers
+      const filtered = rows.slice(0, 40); // only A2:J41
 
       return filtered.map(r => ({
         last: r[0] || "",
@@ -64,8 +88,8 @@
         gender: r[5] || "",
         address: r[6] || "",
         municipality: r[7] || "",
-        bcg: r[8] || "",
-        hepb: r[9] || ""
+        bcg: (r[8] || "").toLowerCase(),
+        hepb: (r[9] || "").toLowerCase()
       }));
     }
 
@@ -73,7 +97,7 @@
       const males = data.filter(d => d.gender.toLowerCase() === "male").length;
       const females = data.filter(d => d.gender.toLowerCase() === "female").length;
 
-      new Chart(document.getElementById("genderChart"), {
+      return new Chart(document.getElementById("genderChart"), {
         type: "pie",
         data: {
           labels: ["Male", "Female"],
@@ -85,18 +109,48 @@
       });
     }
 
-    function buildTable(data) {
-      const table = $("#recordsTable").DataTable();
-      data.forEach(d => {
-        table.row.add([d.last, d.name, d.middle, d.mother, d.birthday, d.gender, d.address, d.municipality, d.bcg, d.hepb]);
+    function populateFilters(data) {
+      const muniSet = new Set(data.map(d => d.municipality).filter(x => x));
+      muniSet.forEach(m => {
+        $("#municipalityFilter").append(`<option value="${m.toLowerCase()}">${m}</option>`);
       });
-      table.draw();
+    }
+
+    function buildTable(data) {
+      return $("#recordsTable").DataTable({
+        data: data.map(d => [d.last, d.name, d.middle, d.mother, d.birthday, d.gender, d.address, d.municipality, d.bcg, d.hepb]),
+      });
     }
 
     $(document).ready(async function () {
-      const data = await fetchSheetData();
-      buildGenderChart(data);
-      buildTable(data);
+      const allData = await fetchSheetData();
+
+      let table = buildTable(allData);
+      let chart = buildGenderChart(allData);
+      populateFilters(allData);
+
+      function applyFilters() {
+        const muni = $("#municipalityFilter").val();
+        const bcg = $("#bcgFilter").val();
+        const hepb = $("#hepbFilter").val();
+
+        const filtered = allData.filter(d => {
+          return (!muni || d.municipality.toLowerCase() === muni) &&
+                 (!bcg || d.bcg.includes(bcg)) &&
+                 (!hepb || d.hepb.includes(hepb));
+        });
+
+        // Refresh DataTable
+        table.clear();
+        table.rows.add(filtered.map(d => [d.last, d.name, d.middle, d.mother, d.birthday, d.gender, d.address, d.municipality, d.bcg, d.hepb]));
+        table.draw();
+
+        // Refresh Chart
+        chart.destroy();
+        chart = buildGenderChart(filtered);
+      }
+
+      $("#municipalityFilter, #bcgFilter, #hepbFilter").on("change", applyFilters);
     });
   </script>
 </body>
