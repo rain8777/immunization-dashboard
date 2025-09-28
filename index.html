@@ -1,30 +1,38 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Immunization Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
-  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css" />
   <style>
-    body { font-family: Arial, sans-serif; margin: 20px; background:#f9fafb; }
+    body { font-family: Arial, sans-serif; margin: 20px; background: #f4f4f9; }
     h1 { text-align: center; }
-    .chart-container { width: 500px; margin: 30px auto; }
-    table { margin-top: 20px; }
-    .filters { margin: 20px auto; text-align:center; }
+    .kpi-container { display: flex; gap: 20px; justify-content: center; margin: 30px 0; }
+    .kpi { background: white; padding: 15px 25px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); text-align: center; flex: 1; }
+    .filters { text-align: center; margin-bottom: 20px; }
     .filters select { margin: 0 10px; padding: 5px; }
+    .chart-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px,1fr)); gap: 30px; margin-bottom: 40px; }
+    table { background: white; }
+    #recordsTable_wrapper { margin-top: 20px; }
   </style>
 </head>
 <body>
-  <h1>📊 Immunization Dashboard</h1>
+  <h1>📊 Immunization Dashboard — Ragay, Camarines Sur</h1>
+
+  <div class="kpi-container">
+    <div class="kpi"><h2 id="totalCount">0</h2><p>Total Records</p></div>
+    <div class="kpi"><h2 id="bcgPct">0%</h2><p>BCG Complete %</p></div>
+    <div class="kpi"><h2 id="hepbPct">0%</h2><p>HepB Complete %</p></div>
+    <div class="kpi"><h2 id="defCount">0</h2><p>Defaulters / Missing</p></div>
+  </div>
 
   <div class="filters">
     <label>Municipality:
-      <select id="municipalityFilter">
-        <option value="">All</option>
-      </select>
+      <select id="municipalityFilter"><option value="">All</option></select>
     </label>
     <label>BCG:
       <select id="bcgFilter">
@@ -46,21 +54,17 @@
 
   <div class="chart-container">
     <canvas id="genderChart"></canvas>
+    <canvas id="addressChart"></canvas>
+    <canvas id="timelineChart"></canvas>
   </div>
 
+  <h2>📋 Full Records</h2>
   <table id="recordsTable" class="display" style="width:100%">
     <thead>
       <tr>
-        <th>Last Name</th>
-        <th>First Name</th>
-        <th>Middle</th>
-        <th>Mother</th>
-        <th>Birthday</th>
-        <th>Gender</th>
-        <th>Address</th>
-        <th>Municipality</th>
-        <th>BCG</th>
-        <th>HepB</th>
+        <th>Last Name</th><th>Name</th><th>Middle</th><th>Mother</th>
+        <th>Birthday</th><th>Gender</th><th>Address</th><th>Municipality</th>
+        <th>BCG</th><th>HepB</th>
       </tr>
     </thead>
     <tbody></tbody>
@@ -68,16 +72,15 @@
 
   <script>
     async function fetchSheetData() {
+      // <-- Use the CSV link after publishing as CSV
       const csvUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR8qr3RNfzQobIMSn-9LMvbf4gVL-HxT0yzqp6ced96IWzRucs0rEfduPJr7YIuv3gBs5073ZQBrzTl/pub?output=csv";
       const resp = await fetch(csvUrl);
       const text = await resp.text();
 
-      // Parse CSV safely
       const parsed = Papa.parse(text.trim(), { skipEmptyLines: true });
       const rows = parsed.data;
-
-      rows.shift(); // remove headers
-      const filtered = rows.slice(0, 40); // only A2:J41
+      rows.shift();  // drop header row
+      const filtered = rows.slice(0, 40);  // A2 to A41
 
       return filtered.map(r => ({
         last: r[0] || "",
@@ -85,72 +88,175 @@
         middle: r[2] || "",
         mother: r[3] || "",
         birthday: r[4] || "",
-        gender: r[5] || "",
+        gender: (r[5] || "").trim(),
         address: r[6] || "",
-        municipality: r[7] || "",
-        bcg: (r[8] || "").toLowerCase(),
-        hepb: (r[9] || "").toLowerCase()
+        municipality: (r[7] || "").trim(),
+        bcg: (r[8] || "").trim().toLowerCase(),
+        hepb: (r[9] || "").trim().toLowerCase()
       }));
     }
 
-    function buildGenderChart(data) {
-      const males = data.filter(d => d.gender.toLowerCase() === "male").length;
-      const females = data.filter(d => d.gender.toLowerCase() === "female").length;
+    function computeKPIs(data) {
+      const total = data.length;
+      let bcgDone = 0, hepbDone = 0, defaulters = 0;
 
+      data.forEach(d => {
+        if (d.bcg && d.bcg !== "hold" && d.bcg !== "rip" && d.bcg !== "") bcgDone++;
+        if (d.hepb && d.hepb !== "hold" && d.hepb !== "rip" && d.hepb !== "") hepbDone++;
+        if (!d.bcg || !d.hepb || d.bcg === "hold" || d.hepb === "hold" || d.bcg === "rip" || d.hepb === "rip") {
+          defaulters++;
+        }
+      });
+
+      document.getElementById("totalCount").innerText = total;
+      document.getElementById("bcgPct").innerText = total ? Math.round(bcgDone / total * 100) + "%" : "0%";
+      document.getElementById("hepbPct").innerText = total ? Math.round(hepbDone / total * 100) + "%" : "0%";
+      document.getElementById("defCount").innerText = defaulters;
+    }
+
+    function buildGenderChart(data) {
+      const counts = { male: 0, female: 0, other: 0 };
+      data.forEach(d => {
+        const g = d.gender.toLowerCase();
+        if (g === "male") counts.male++;
+        else if (g === "female") counts.female++;
+        else counts.other++;
+      });
       return new Chart(document.getElementById("genderChart"), {
         type: "pie",
         data: {
-          labels: ["Male", "Female"],
+          labels: ["Male", "Female", "Other/Unknown"],
           datasets: [{
-            data: [males, females],
-            backgroundColor: ["#36A2EB", "#FF6384"]
+            data: [counts.male, counts.female, counts.other],
+            backgroundColor: ["#36A2EB", "#FF6384", "#CCCCCC"]
           }]
+        },
+        options: { plugins: { title: { display: true, text: "Gender Distribution" } } }
+      });
+    }
+
+    function buildAddressChart(data) {
+      const countByAddr = {};
+      data.forEach(d => {
+        const a = d.address || "Unknown";
+        countByAddr[a] = (countByAddr[a] || 0) + 1;
+      });
+      const labels = Object.keys(countByAddr);
+      const values = labels.map(l => countByAddr[l]);
+      return new Chart(document.getElementById("addressChart"), {
+        type: "bar",
+        data: {
+          labels,
+          datasets: [{ label: "Count", data: values, backgroundColor: "#4BC0C0" }]
+        },
+        options: {
+          indexAxis: 'y',
+          plugins: { title: { display: true, text: "Children by Address / Barangay" } },
+          scales: { x: { beginAtZero: true } }
         }
       });
     }
 
+    function buildTimelineChart(data) {
+      const map = {};
+      function addTo(date, field) {
+        if (!date) return;
+        if (!map[date]) map[date] = { bcg: 0, hepb: 0 };
+        map[date][field]++;
+      }
+      data.forEach(d => {
+        if (d.bcg && d.bcg !== "hold" && d.bcg !== "rip") addTo(d.bcg, "bcg");
+        if (d.hepb && d.hepb !== "hold" && d.hepb !== "rip") addTo(d.hepb, "hepb");
+      });
+      const sorted = Object.keys(map).sort((a, b) => new Date(a) - new Date(b));
+      const bcgSeries = sorted.map(d => map[d].bcg);
+      const hepbSeries = sorted.map(d => map[d].hepb);
+      return new Chart(document.getElementById("timelineChart"), {
+        type: "line",
+        data: {
+          labels: sorted,
+          datasets: [
+            { label: "BCG", data: bcgSeries, borderColor: "#36A2EB", fill: false },
+            { label: "HepB", data: hepbSeries, borderColor: "#FF6384", fill: false }
+          ]
+        },
+        options: { plugins: { title: { display: true, text: "Immunizations Over Time" } }, scales: { x: { ticks: { autoSkip: true, maxTicksLimit: 15 } } } }
+      });
+    }
+
     function populateFilters(data) {
-      const muniSet = new Set(data.map(d => d.municipality).filter(x => x));
+      const muniSet = new Set(data.map(d => d.municipality.toLowerCase()));
       muniSet.forEach(m => {
-        $("#municipalityFilter").append(`<option value="${m.toLowerCase()}">${m}</option>`);
+        if (m) {
+          $("#municipalityFilter").append(`<option value="${m}">${m}</option>`);
+        }
       });
     }
 
     function buildTable(data) {
       return $("#recordsTable").DataTable({
         data: data.map(d => [d.last, d.name, d.middle, d.mother, d.birthday, d.gender, d.address, d.municipality, d.bcg, d.hepb]),
+        columns: [
+          { title: "Last Name" },
+          { title: "Name" },
+          { title: "Middle" },
+          { title: "Mother" },
+          { title: "Birthday" },
+          { title: "Gender" },
+          { title: "Address" },
+          { title: "Municipality" },
+          { title: "BCG" },
+          { title: "HepB" }
+        ]
       });
     }
 
-    $(document).ready(async function () {
-      const allData = await fetchSheetData();
+    $(document).ready(async () => {
+      try {
+        const allData = await fetchSheetData();
 
-      let table = buildTable(allData);
-      let chart = buildGenderChart(allData);
-      populateFilters(allData);
+        computeKPIs(allData);
+        let genderChart = buildGenderChart(allData);
+        let addrChart = buildAddressChart(allData);
+        let timeChart = buildTimelineChart(allData);
 
-      function applyFilters() {
-        const muni = $("#municipalityFilter").val();
-        const bcg = $("#bcgFilter").val();
-        const hepb = $("#hepbFilter").val();
+        populateFilters(allData);
+        let table = buildTable(allData);
 
-        const filtered = allData.filter(d => {
-          return (!muni || d.municipality.toLowerCase() === muni) &&
-                 (!bcg || d.bcg.includes(bcg)) &&
-                 (!hepb || d.hepb.includes(hepb));
-        });
+        function applyFilters() {
+          const muni = $("#municipalityFilter").val();
+          const bcg = $("#bcgFilter").val();
+          const hepb = $("#hepbFilter").val();
 
-        // Refresh DataTable
-        table.clear();
-        table.rows.add(filtered.map(d => [d.last, d.name, d.middle, d.mother, d.birthday, d.gender, d.address, d.municipality, d.bcg, d.hepb]));
-        table.draw();
+          const filtered = allData.filter(d => {
+            return (!muni || d.municipality.toLowerCase() === muni) &&
+                   (!bcg || d.bcg.includes(bcg)) &&
+                   (!hepb || d.hepb.includes(hepb));
+          });
 
-        // Refresh Chart
-        chart.destroy();
-        chart = buildGenderChart(filtered);
+          // Update KPIs too
+          computeKPIs(filtered);
+
+          // Update table
+          table.clear();
+          table.rows.add(filtered.map(d => [d.last, d.name, d.middle, d.mother, d.birthday, d.gender, d.address, d.municipality, d.bcg, d.hepb]));
+          table.draw();
+
+          // Update charts
+          genderChart.destroy();
+          addrChart.destroy();
+          timeChart.destroy();
+          genderChart = buildGenderChart(filtered);
+          addrChart = buildAddressChart(filtered);
+          timeChart = buildTimelineChart(filtered);
+        }
+
+        $("#municipalityFilter, #bcgFilter, #hepbFilter").on("change", applyFilters);
+
+      } catch (err) {
+        console.error("Error initializing dashboard:", err);
+        alert("Failed to load data — see console for details");
       }
-
-      $("#municipalityFilter, #bcgFilter, #hepbFilter").on("change", applyFilters);
     });
   </script>
 </body>
