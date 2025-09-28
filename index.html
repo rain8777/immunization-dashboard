@@ -8,79 +8,214 @@
   <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css" />
+
   <style>
-    body { font-family: Arial, sans-serif; margin: 20px; background: #f4f4f9; }
-    h1 { text-align: center; }
-    .kpi-container { display: flex; gap: 20px; justify-content: center; margin: 30px 0; }
-    .kpi { background: white; padding: 15px 25px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); text-align: center; flex: 1; }
-    .filters { text-align: center; margin-bottom: 20px; }
-    .filters select { margin: 0 10px; padding: 5px; }
-    .chart-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px,1fr)); gap: 30px; margin-bottom: 40px; }
-    table { background: white; }
-    #recordsTable_wrapper { margin-top: 20px; }
+    :root {
+      --bg: #f9fafb;
+      --card-bg: #ffffff;
+      --text-color: #1f2937;
+      --accent: #2563eb;
+      --shadow: rgba(0,0,0,0.1);
+    }
+    [data-theme="dark"] {
+      --bg: #111827;
+      --card-bg: #1f2937;
+      --text-color: #f3f4f6;
+      --accent: #60a5fa;
+      --shadow: rgba(0,0,0,0.5);
+    }
+
+    body {
+      font-family: "Segoe UI", Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text-color);
+      margin: 0;
+      padding: 20px;
+      transition: background 0.3s, color 0.3s;
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 30px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+    .theme-toggle {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      padding: 10px 16px;
+      background: var(--card-bg);
+      border: none;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px var(--shadow);
+      cursor: pointer;
+      color: var(--text-color);
+      font-weight: 600;
+      transition: all 0.3s;
+    }
+    .theme-toggle:hover {
+      background: var(--accent);
+      color: white;
+    }
+
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+    .card {
+      background: var(--card-bg);
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 4px 10px var(--shadow);
+      text-align: center;
+      transition: transform 0.2s;
+    }
+    .card:hover {
+      transform: translateY(-4px);
+    }
+    .card h2 {
+      margin: 0;
+      font-size: 2em;
+      color: var(--accent);
+    }
+    .card p {
+      margin: 10px 0 0;
+      font-size: 1em;
+      opacity: 0.9;
+    }
+
+    .dashboard {
+      display: grid;
+      grid-template-columns: 300px 1fr;
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+    .chart-card {
+      background: var(--card-bg);
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 4px 10px var(--shadow);
+      text-align: center;
+    }
+    .chart-card canvas {
+      max-width: 250px;
+      max-height: 250px;
+    }
+
+    .filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 15px;
+      align-items: center;
+      background: var(--card-bg);
+      padding: 20px;
+      border-radius: 16px;
+      box-shadow: 0 4px 10px var(--shadow);
+    }
+    .filters label {
+      font-size: 0.95em;
+      font-weight: 500;
+    }
+    .filters select {
+      margin-left: 8px;
+      padding: 6px 10px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      background: var(--card-bg);
+      color: var(--text-color);
+    }
+
+    table.dataTable {
+      background: var(--card-bg);
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 4px 10px var(--shadow);
+    }
   </style>
 </head>
-<body>
-  <h1>📊 Immunization Dashboard — Ragay, Camarines Sur</h1>
+<body data-theme="light">
 
-  <div class="kpi-container">
-    <div class="kpi"><h2 id="totalCount">0</h2><p>Total Records</p></div>
-    <div class="kpi"><h2 id="bcgPct">0%</h2><p>BCG Complete %</p></div>
-    <div class="kpi"><h2 id="hepbPct">0%</h2><p>HepB Complete %</p></div>
-    <div class="kpi"><h2 id="defCount">0</h2><p>Defaulters / Missing</p></div>
+  <button class="theme-toggle">🌙 Switch Theme</button>
+  <h1>📊 Immunization Dashboard</h1>
+
+  <!-- Summary cards -->
+  <div class="summary">
+    <div class="card"><h2 id="totalRecords">0</h2><p>Total Children</p></div>
+    <div class="card"><h2 id="defaulters">0</h2><p>Defaulters / Missing</p></div>
   </div>
 
-  <div class="filters">
-    <label>Municipality:
-      <select id="municipalityFilter"><option value="">All</option></select>
-    </label>
-    <label>BCG:
-      <select id="bcgFilter">
-        <option value="">All</option>
-        <option value="complete">Complete</option>
-        <option value="hold">Hold</option>
-        <option value="pending">Pending</option>
-      </select>
-    </label>
-    <label>HepB:
-      <select id="hepbFilter">
-        <option value="">All</option>
-        <option value="complete">Complete</option>
-        <option value="hold">Hold</option>
-        <option value="pending">Pending</option>
-      </select>
-    </label>
+  <!-- Filters + Gender Chart -->
+  <div class="dashboard">
+    <div class="chart-card">
+      <h3>Gender Distribution</h3>
+      <canvas id="genderChart"></canvas>
+    </div>
+    <div class="filters">
+      <label>Barangay:
+        <select id="barangayFilter"><option value="">All</option></select>
+      </label>
+      <label>BCG:
+        <select id="bcgFilter">
+          <option value="">All</option>
+          <option value="complete">Complete</option>
+          <option value="hold">Hold</option>
+          <option value="pending">Pending</option>
+        </select>
+      </label>
+      <label>HepB:
+        <select id="hepbFilter">
+          <option value="">All</option>
+          <option value="complete">Complete</option>
+          <option value="hold">Hold</option>
+          <option value="pending">Pending</option>
+        </select>
+      </label>
+    </div>
   </div>
 
-  <div class="chart-container">
-    <canvas id="genderChart"></canvas>
-    <canvas id="addressChart"></canvas>
-    <canvas id="timelineChart"></canvas>
-  </div>
-
-  <h2>📋 Full Records</h2>
+  <!-- Data Table -->
   <table id="recordsTable" class="display" style="width:100%">
     <thead>
       <tr>
-        <th>Last Name</th><th>Name</th><th>Middle</th><th>Mother</th>
-        <th>Birthday</th><th>Gender</th><th>Address</th><th>Municipality</th>
-        <th>BCG</th><th>HepB</th>
+        <th>Last Name</th>
+        <th>Name</th>
+        <th>Middle</th>
+        <th>Mother</th>
+        <th>Birthday</th>
+        <th>Gender</th>
+        <th>Barangay</th>
+        <th>Municipality</th>
+        <th>BCG</th>
+        <th>HepB</th>
       </tr>
     </thead>
     <tbody></tbody>
   </table>
 
   <script>
+    // Theme toggle
+    document.querySelector(".theme-toggle").addEventListener("click", () => {
+      const body = document.body;
+      const toggle = document.querySelector(".theme-toggle");
+      if (body.dataset.theme === "light") {
+        body.dataset.theme = "dark";
+        toggle.textContent = "☀️ Switch Theme";
+      } else {
+        body.dataset.theme = "light";
+        toggle.textContent = "🌙 Switch Theme";
+      }
+    });
+
     async function fetchSheetData() {
-      // <-- Use the CSV link after publishing as CSV
       const csvUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR8qr3RNfzQobIMSn-9LMvbf4gVL-HxT0yzqp6ced96IWzRucs0rEfduPJr7YIuv3gBs5073ZQBrzTl/pub?output=csv";
       const resp = await fetch(csvUrl);
-      const text = await resp.text();
-
-      const parsed = Papa.parse(text.trim(), { skipEmptyLines: true });
+      const txt = await resp.text();
+      const parsed = Papa.parse(txt.trim(), { skipEmptyLines: true });
       const rows = parsed.data;
-      rows.shift();  // drop header row
-      const filtered = rows.slice(0, 40);  // A2 to A41
+      rows.shift(); // remove header row
+      const filtered = rows.slice(0, 40); // assuming A2:J41
 
       return filtered.map(r => ({
         last: r[0] || "",
@@ -89,173 +224,78 @@
         mother: r[3] || "",
         birthday: r[4] || "",
         gender: (r[5] || "").trim(),
-        address: r[6] || "",
+        barangay: (r[6] || "").trim(),
         municipality: (r[7] || "").trim(),
         bcg: (r[8] || "").trim().toLowerCase(),
         hepb: (r[9] || "").trim().toLowerCase()
       }));
     }
 
-    function computeKPIs(data) {
-      const total = data.length;
-      let bcgDone = 0, hepbDone = 0, defaulters = 0;
-
-      data.forEach(d => {
-        if (d.bcg && d.bcg !== "hold" && d.bcg !== "rip" && d.bcg !== "") bcgDone++;
-        if (d.hepb && d.hepb !== "hold" && d.hepb !== "rip" && d.hepb !== "") hepbDone++;
-        if (!d.bcg || !d.hepb || d.bcg === "hold" || d.hepb === "hold" || d.bcg === "rip" || d.hepb === "rip") {
-          defaulters++;
-        }
-      });
-
-      document.getElementById("totalCount").innerText = total;
-      document.getElementById("bcgPct").innerText = total ? Math.round(bcgDone / total * 100) + "%" : "0%";
-      document.getElementById("hepbPct").innerText = total ? Math.round(hepbDone / total * 100) + "%" : "0%";
-      document.getElementById("defCount").innerText = defaulters;
+    function updateSummary(data) {
+      $("#totalRecords").text(data.length);
+      const defaulters = data.filter(d => !(d.bcg.includes("complete") && d.hepb.includes("complete"))).length;
+      $("#defaulters").text(defaulters);
     }
 
     function buildGenderChart(data) {
-      const counts = { male: 0, female: 0, other: 0 };
-      data.forEach(d => {
-        const g = d.gender.toLowerCase();
-        if (g === "male") counts.male++;
-        else if (g === "female") counts.female++;
-        else counts.other++;
-      });
+      const m = data.filter(d => d.gender.toLowerCase() === "male").length;
+      const f = data.filter(d => d.gender.toLowerCase() === "female").length;
       return new Chart(document.getElementById("genderChart"), {
         type: "pie",
         data: {
-          labels: ["Male", "Female", "Other/Unknown"],
-          datasets: [{
-            data: [counts.male, counts.female, counts.other],
-            backgroundColor: ["#36A2EB", "#FF6384", "#CCCCCC"]
-          }]
+          labels: ["Male", "Female"],
+          datasets: [{ data: [m, f], backgroundColor: ["#36A2EB", "#FF6384"] }]
         },
-        options: { plugins: { title: { display: true, text: "Gender Distribution" } } }
-      });
-    }
-
-    function buildAddressChart(data) {
-      const countByAddr = {};
-      data.forEach(d => {
-        const a = d.address || "Unknown";
-        countByAddr[a] = (countByAddr[a] || 0) + 1;
-      });
-      const labels = Object.keys(countByAddr);
-      const values = labels.map(l => countByAddr[l]);
-      return new Chart(document.getElementById("addressChart"), {
-        type: "bar",
-        data: {
-          labels,
-          datasets: [{ label: "Count", data: values, backgroundColor: "#4BC0C0" }]
-        },
-        options: {
-          indexAxis: 'y',
-          plugins: { title: { display: true, text: "Children by Address / Barangay" } },
-          scales: { x: { beginAtZero: true } }
-        }
-      });
-    }
-
-    function buildTimelineChart(data) {
-      const map = {};
-      function addTo(date, field) {
-        if (!date) return;
-        if (!map[date]) map[date] = { bcg: 0, hepb: 0 };
-        map[date][field]++;
-      }
-      data.forEach(d => {
-        if (d.bcg && d.bcg !== "hold" && d.bcg !== "rip") addTo(d.bcg, "bcg");
-        if (d.hepb && d.hepb !== "hold" && d.hepb !== "rip") addTo(d.hepb, "hepb");
-      });
-      const sorted = Object.keys(map).sort((a, b) => new Date(a) - new Date(b));
-      const bcgSeries = sorted.map(d => map[d].bcg);
-      const hepbSeries = sorted.map(d => map[d].hepb);
-      return new Chart(document.getElementById("timelineChart"), {
-        type: "line",
-        data: {
-          labels: sorted,
-          datasets: [
-            { label: "BCG", data: bcgSeries, borderColor: "#36A2EB", fill: false },
-            { label: "HepB", data: hepbSeries, borderColor: "#FF6384", fill: false }
-          ]
-        },
-        options: { plugins: { title: { display: true, text: "Immunizations Over Time" } }, scales: { x: { ticks: { autoSkip: true, maxTicksLimit: 15 } } } }
+        options: { responsive: true, plugins: { legend: { position: "bottom" } } }
       });
     }
 
     function populateFilters(data) {
-      const muniSet = new Set(data.map(d => d.municipality.toLowerCase()));
-      muniSet.forEach(m => {
-        if (m) {
-          $("#municipalityFilter").append(`<option value="${m}">${m}</option>`);
-        }
+      const brgySet = new Set(data.map(d => d.barangay).filter(x => x));
+      brgySet.forEach(b => {
+        $("#barangayFilter").append(`<option value="${b.toLowerCase()}">${b}</option>`);
       });
     }
 
     function buildTable(data) {
       return $("#recordsTable").DataTable({
-        data: data.map(d => [d.last, d.name, d.middle, d.mother, d.birthday, d.gender, d.address, d.municipality, d.bcg, d.hepb]),
-        columns: [
-          { title: "Last Name" },
-          { title: "Name" },
-          { title: "Middle" },
-          { title: "Mother" },
-          { title: "Birthday" },
-          { title: "Gender" },
-          { title: "Address" },
-          { title: "Municipality" },
-          { title: "BCG" },
-          { title: "HepB" }
-        ]
+        data: data.map(d => [d.last, d.name, d.middle, d.mother, d.birthday, d.gender, d.barangay, d.municipality, d.bcg, d.hepb]),
+        pageLength: 10
       });
     }
 
     $(document).ready(async () => {
       try {
-        const allData = await fetchSheetData();
-
-        computeKPIs(allData);
-        let genderChart = buildGenderChart(allData);
-        let addrChart = buildAddressChart(allData);
-        let timeChart = buildTimelineChart(allData);
-
-        populateFilters(allData);
-        let table = buildTable(allData);
+        const all = await fetchSheetData();
+        let table = buildTable(all);
+        let genderChart = buildGenderChart(all);
+        populateFilters(all);
+        updateSummary(all);
 
         function applyFilters() {
-          const muni = $("#municipalityFilter").val();
+          const brgy = $("#barangayFilter").val();
           const bcg = $("#bcgFilter").val();
           const hepb = $("#hepbFilter").val();
 
-          const filtered = allData.filter(d => {
-            return (!muni || d.municipality.toLowerCase() === muni) &&
+          const filtered = all.filter(d => {
+            return (!brgy || d.barangay.toLowerCase() === brgy) &&
                    (!bcg || d.bcg.includes(bcg)) &&
                    (!hepb || d.hepb.includes(hepb));
           });
 
-          // Update KPIs too
-          computeKPIs(filtered);
-
-          // Update table
           table.clear();
-          table.rows.add(filtered.map(d => [d.last, d.name, d.middle, d.mother, d.birthday, d.gender, d.address, d.municipality, d.bcg, d.hepb]));
+          table.rows.add(filtered.map(d => [d.last, d.name, d.middle, d.mother, d.birthday, d.gender, d.barangay, d.municipality, d.bcg, d.hepb]));
           table.draw();
 
-          // Update charts
           genderChart.destroy();
-          addrChart.destroy();
-          timeChart.destroy();
           genderChart = buildGenderChart(filtered);
-          addrChart = buildAddressChart(filtered);
-          timeChart = buildTimelineChart(filtered);
+          updateSummary(filtered);
         }
 
-        $("#municipalityFilter, #bcgFilter, #hepbFilter").on("change", applyFilters);
-
+        $("#barangayFilter, #bcgFilter, #hepbFilter").on("change", applyFilters);
       } catch (err) {
-        console.error("Error initializing dashboard:", err);
-        alert("Failed to load data — see console for details");
+        console.error("Dashboard load error:", err);
+        alert("Error loading data — see console");
       }
     });
   </script>
