@@ -41,29 +41,32 @@
 
   <script>
     async function fetchSheetData() {
-      // Use CSV link from Publish to web → CSV
+      // Use CSV link (publish to web → CSV)
       const csvUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR8qr3RNfzQobIMSn-9LMvbf4gVL-HxT0yzqp6ced96IWzRucs0rEfduPJr7YIuv3gBs5073ZQBrzTl/pub?output=csv";
       const resp = await fetch(csvUrl);
       const text = await resp.text();
       
-      // Parse CSV
-      const lines = text.split("\n").map(l => l.split(","));
-      const headers = lines.shift(); // remove header row
+      // Split rows
+      const lines = text.trim().split("\n").map(l => l.split(","));
 
-      return lines
-        .filter(r => r.length > 1) // skip empty rows
-        .map(r => ({
-          last: r[0] || "",
-          name: r[1] || "",
-          middle: r[2] || "",
-          mother: r[3] || "",
-          birthday: r[4] || "",
-          gender: r[5] || "",
-          address: r[6] || "",
-          municipality: r[7] || "",
-          bcg: r[8] || "",
-          hepb: r[9] || ""
-        }));
+      // Remove header row (A1:J1)
+      lines.shift();
+
+      // Only take rows A2:J41 (in case sheet has extra blank rows)
+      const filtered = lines.slice(0, 40); // 40 rows from A2 to A41
+
+      return filtered.map(r => ({
+        last: r[0] || "",
+        name: r[1] || "",
+        middle: r[2] || "",
+        mother: r[3] || "",
+        birthday: r[4] || "",
+        gender: r[5] || "",
+        address: r[6] || "",
+        municipality: r[7] || "",
+        bcg: r[8] || "",
+        hepb: r[9] || ""
+      }));
     }
 
     function buildGenderChart(data) {
